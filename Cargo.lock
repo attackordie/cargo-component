@@ -521,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-component"
-version = "0.21.1"
+version = "0.21.2-be.1"
 dependencies = [
  "anyhow",
  "assert_cmd",
@@ -570,7 +570,7 @@ dependencies = [
 
 [[package]]
 name = "cargo-component-core"
-version = "0.21.1"
+version = "0.21.2-be.1"
 dependencies = [
  "anyhow",
  "clap",

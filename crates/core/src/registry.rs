@@ -364,7 +364,10 @@ impl<'a> DecodedDependency<'a> {
     pub fn resolve(self) -> Result<(Resolve, PackageId, Vec<PathBuf>)> {
         match self {
             Self::Wit { package, .. } => {
-                let mut resolve = Resolve::new();
+                let mut resolve = Resolve {
+                    all_features: true,
+                    ..Default::default()
+                };
                 let source_files = package
                     .source_map
                     .source_files()

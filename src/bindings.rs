@@ -266,7 +266,10 @@ impl<'a> BindingsGenerator<'a> {
         path: &Path,
         world: Option<&str>,
     ) -> Result<(Resolve, WorldId, Vec<PathBuf>)> {
-        let mut merged = Resolve::default();
+        let mut merged = Resolve {
+            all_features: true,
+            ..Default::default()
+        };
 
         // Start by decoding all of the target dependencies
         let mut deps = IndexMap::new();
@@ -413,7 +416,10 @@ impl<'a> BindingsGenerator<'a> {
     }
 
     fn target_empty_world(resolution: &PackageDependencyResolution) -> (Resolve, WorldId) {
-        let mut resolve = Resolve::default();
+        let mut resolve = Resolve {
+            all_features: true,
+            ..Default::default()
+        };
         let name = resolution.metadata.name.to_kebab_case();
         let pkg_name = PackageName {
             namespace: "component".to_string(),
