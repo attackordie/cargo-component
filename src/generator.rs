@@ -291,7 +291,9 @@ impl<'a> UnimplementedFunction<'a> {
         // with wit-bindgen, but right now it's tightly coupled with interface generation.
         write!(source, "    fn {name}(")?;
 
-        for (i, (name, param)) in self.func.params.iter().enumerate() {
+        for (i, param) in self.func.params.iter().enumerate() {
+            let name = &param.name;
+            let param = &param.ty;
             if i > 0 {
                 source.push_str(", ");
             }
@@ -413,6 +415,9 @@ impl<'a> UnimplementedFunction<'a> {
             TypeDefKind::Resource => {
                 bail!("unsupported anonymous resource type found in WIT package")
             }
+            TypeDefKind::Map(_, _) | TypeDefKind::FixedLengthList(_, _) => {
+                bail!("unsupported map or fixed-length list type found in WIT package")
+            }
             TypeDefKind::Unknown => unreachable!(),
         }
 
@@ -434,7 +439,7 @@ impl<'a> UnimplementedFunction<'a> {
                             .exports
                             .values()
                             .any(|world_item| match world_item {
-                                WorldItem::Interface { id, stability: _ } => *id == interface_id,
+                                WorldItem::Interface { id, .. } => *id == interface_id,
                                 _ => false,
                             })
                     }
@@ -448,7 +453,7 @@ impl<'a> UnimplementedFunction<'a> {
                         .exports
                         .values()
                         .any(|world_item| match world_item {
-                            WorldItem::Interface { id, stability: _ } => *id == interface_id,
+                            WorldItem::Interface { id, .. } => *id == interface_id,
                             _ => false,
                         })
                 }
@@ -680,14 +685,14 @@ impl<'a> ImplementationGenerator<'a> {
                 }
                 WorldItem::Interface {
                     id: iface,
-                    stability: _,
+                    ..
                 } => {
                     let interface = &resolve.interfaces[*iface];
                     interfaces.push(InterfaceGenerator::new(
                         resolve, key, interface, names, world,
                     )?);
                 }
-                WorldItem::Type(_) => continue,
+                WorldItem::Type { .. } => continue,
             }
         }
 
@@ -816,7 +821,7 @@ impl<'a> SourceGenerator<'a> {
 
     async fn decode(&self, world: Option<&str>) -> Result<(Resolve, WorldId)> {
         let (resolve, pkg_id, _) = self.resolution.decode().await?.resolve()?;
-        let world = resolve.select_world(pkg_id, world).with_context(|| {
+        let world = resolve.select_world(&[pkg_id], world).with_context(|| {
             format!(
                 "failed to select world from target package `{name}`",
                 name = self.name

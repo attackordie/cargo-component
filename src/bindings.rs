@@ -11,8 +11,8 @@ use heck::ToKebabCase;
 use indexmap::{IndexMap, IndexSet};
 use semver::Version;
 use wasm_pkg_client::PackageRef;
-use wit_bindgen_core::Files;
-use wit_bindgen_rust::{AsyncConfig, Opts, WithOption};
+use wit_bindgen_core::{Files, WorldGenerator};
+use wit_bindgen_rust::{Opts, WithOption};
 use wit_component::DecodedWasm;
 use wit_parser::{
     Interface, Package, PackageName, Resolve, Type, TypeDefKind, TypeOwner, UnresolvedPackageGroup,
@@ -135,14 +135,16 @@ impl<'a> BindingsGenerator<'a> {
             pub_export_macro: settings.pub_export_macro,
             generate_unused_types: settings.generate_unused_types,
             disable_custom_section_link_helpers: settings.disable_custom_section_link_helpers,
+            merge_structurally_equal_types: None,
 
             // TODO: pipe this through to the CLI options, requires valid serde impls
-            async_: AsyncConfig::None,
+            async_: Default::default(),
         };
 
         let mut files = Files::default();
+        let mut resolve = self.resolve;
         opts.build()
-            .generate(&self.resolve, self.world, &mut files)
+            .generate(&mut resolve, self.world, &mut files)
             .context("failed to generate bindings")?;
 
         let sources: Vec<_> = files
@@ -255,7 +257,7 @@ impl<'a> BindingsGenerator<'a> {
             })?;
 
         let world = resolve
-            .select_world(pkg, world)
+            .select_world(&[pkg], world)
             .with_context(|| format!("failed to select world from target package `{name}`"))?;
 
         Ok((resolve, world, source_files))
@@ -291,12 +293,17 @@ impl<'a> BindingsGenerator<'a> {
                 )
             })?
         } else {
-            UnresolvedPackageGroup::parse_file(path).with_context(|| {
-                format!(
-                    "failed to parse local target `{path}`",
-                    path = path.display()
-                )
-            })?
+            {
+                let contents = std::fs::read_to_string(path).with_context(|| {
+                    format!("failed to read local target `{}`", path.display())
+                })?;
+                UnresolvedPackageGroup::parse(path, &contents).with_context(|| {
+                    format!(
+                        "failed to parse local target `{path}`",
+                        path = path.display()
+                    )
+                })?
+            }
         };
 
         let mut source_files: Vec<_> = root
@@ -356,7 +363,7 @@ impl<'a> BindingsGenerator<'a> {
         })?;
 
         let world = merged
-            .select_world(package, world)
+            .select_world(&[package], world)
             .with_context(|| match world {
                 Some(world) => {
                     format!(
@@ -443,8 +450,8 @@ impl<'a> BindingsGenerator<'a> {
             exports: Default::default(),
             package: Some(package),
             includes: Default::default(),
-            include_names: Default::default(),
             stability: Default::default(),
+            span: Default::default(),
         });
 
         resolve.packages[package].worlds.insert(name, world);
@@ -474,7 +481,7 @@ impl<'a> BindingsGenerator<'a> {
         // Check for directly used types from the component's world
         // Add any used interfaces to the `used` map
         for item in resolve.worlds[source_id].imports.values() {
-            if let WorldItem::Type(ty) = &item {
+            if let WorldItem::Type { id: ty, .. } = &item {
                 if let TypeDefKind::Type(Type::Id(ty)) = resolve.types[*ty].kind {
                     if let TypeOwner::Interface(id) = resolve.types[ty].owner {
                         log::debug!(
@@ -488,6 +495,7 @@ impl<'a> BindingsGenerator<'a> {
                             WorldItem::Interface {
                                 id,
                                 stability: Default::default(),
+                                span: Default::default(),
                             },
                         );
                     }
@@ -502,7 +510,7 @@ impl<'a> BindingsGenerator<'a> {
                     log::debug!("importing function `{name}`", name = f.name);
                     functions.insert(key.clone().unwrap_name(), f.clone());
                 }
-                WorldItem::Interface { id, stability: _ } => {
+                WorldItem::Interface { id, .. } => {
                     let name = match key {
                         WorldKey::Name(name) => name.clone(),
                         WorldKey::Interface(id) => {
@@ -543,6 +551,7 @@ impl<'a> BindingsGenerator<'a> {
                                         WorldItem::Interface {
                                             id: other,
                                             stability: Default::default(),
+                                            span: Default::default(),
                                         },
                                     );
                                 }
@@ -575,6 +584,8 @@ impl<'a> BindingsGenerator<'a> {
                 docs: Default::default(),
                 package,
                 stability: Default::default(),
+                clone_of: None,
+                span: Default::default(),
             });
 
             let import_name =
@@ -588,6 +599,7 @@ impl<'a> BindingsGenerator<'a> {
                     WorldItem::Interface {
                         id,
                         stability: Default::default(),
+                        span: Default::default(),
                     },
                 )
                 .is_some()
@@ -620,6 +632,8 @@ impl<'a> BindingsGenerator<'a> {
                 functions,
                 package: source.package,
                 stability: Default::default(),
+                clone_of: None,
+                span: Default::default(),
             });
 
             // Add any types owned by the world to the interface
@@ -639,6 +653,7 @@ impl<'a> BindingsGenerator<'a> {
                     WorldItem::Interface {
                         id: interface,
                         stability: Default::default(),
+                        span: Default::default(),
                     },
                 )
                 .is_some()
