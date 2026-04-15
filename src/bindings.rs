@@ -111,12 +111,16 @@ impl<'a> BindingsGenerator<'a> {
             additional_derive_attributes: settings.derives.clone(),
             additional_derive_ignore: Vec::new(),
             std_feature: settings.std_feature,
-            // We use pregenerated bindings, rather than the `generate!` macro
-            // from the `wit-bindgen` crate, so instead of getting the runtime
-            // from the default path of `wit_bindgen::rt`, which is a re-export
-            // of the `wit-bindgen-rt` API, we just use the `wit-bindgen-rt`
-            // crate directly.
-            runtime_path: Some("wit_bindgen_rt".to_string()),
+            // wit-bindgen 0.55+ merged the standalone `wit-bindgen-rt` crate
+            // into the main `wit-bindgen` crate as the `rt` module. The last
+            // published `wit-bindgen-rt` on crates.io (0.44) has older trait
+            // shapes that fail with the 0.55-generated async-subtask code
+            // (missing ABI_LAYOUT const, different call_import signature).
+            // Point the generator at `wit_bindgen::rt` so it resolves to the
+            // in-tree runtime module; components add the unified wit-bindgen
+            // crate as a dependency (optionally aliased as wit-bindgen-rt for
+            // scaffolding backward compat).
+            runtime_path: Some("wit_bindgen::rt".to_string()),
             bitflags_path: None,
             raw_strings: settings.raw_strings,
             skip: settings.skip.clone(),
