@@ -57,6 +57,9 @@ OCI_Registry repository.
 
 ## About this file
 
-`FORK.md` is fork-only and is NOT intended to be submitted upstream. When the
-branch above is prepared for the Bytecode Alliance PR, this file will be
-dropped from the submitted commits.
+`FORK.md` is fork-only and is NOT intended to be submitted upstream. A
+companion fork-only doc, `WIT_BINDGEN_MIGRATION.md` (commit `bc6f6e2`),
+sits alongside it and describes the runtime-side migration downstream
+consumers must perform after installing this fork. When the branch above
+is prepared for the Bytecode Alliance PR, both files will be dropped from
+the submitted commits.
