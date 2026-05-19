@@ -5,6 +5,48 @@ Upstream: [bytecodealliance/cargo-component](https://github.com/bytecodealliance
 This fork exists to prepare a set of commits for upstream submission. The
 PR-candidate work lives on branch **`fix/wit-bindgen-rt-unified-runtime-path`**.
 
+## Quick start
+
+Install the fork's `cargo-component` binary from this branch.
+
+Option A — from a local clone (recommended if you want to inspect or iterate):
+
+```bash
+git clone https://github.com/attackordie/cargo-component.git
+cd cargo-component
+git checkout fix/wit-bindgen-rt-unified-runtime-path
+cargo install --path . --locked
+```
+
+Option B — directly from GitHub:
+
+```bash
+cargo install \
+  --git https://github.com/attackordie/cargo-component.git \
+  --branch fix/wit-bindgen-rt-unified-runtime-path \
+  --locked \
+  cargo-component
+```
+
+Confirm the install picked up the fork (not a previously installed upstream
+build):
+
+```bash
+cargo-component --version
+# Should print a commit SHA from this branch — HEAD-aware versioning is
+# commit 57fd525, so a stale upstream binary will not report a SHA at all.
+which cargo-component
+# Should resolve to ~/.cargo/bin/cargo-component (or your CARGO_HOME equivalent).
+```
+
+Once installed, downstream component workspaces need a one-time `Cargo.toml`
+migration to the unified `wit-bindgen` crate shape — see
+[`WIT_BINDGEN_MIGRATION.md`](./WIT_BINDGEN_MIGRATION.md) for the mechanical
+before/after, the workspace-pin guidance, and verification steps. Without that
+migration, the fork's generator will emit `wit_bindgen::rt::*` paths against a
+sub-0.55 runtime crate and the build will fail with `E0433: could not find
+Cleanup in rt`.
+
 ## What the branch does
 
 `fix/wit-bindgen-rt-unified-runtime-path` contains four commits on top of
