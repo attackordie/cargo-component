@@ -139,7 +139,7 @@ impl<'a> BindingsGenerator<'a> {
             pub_export_macro: settings.pub_export_macro,
             generate_unused_types: settings.generate_unused_types,
             disable_custom_section_link_helpers: settings.disable_custom_section_link_helpers,
-            merge_structurally_equal_types: None,
+            merge_structurally_equal_types: Some(Some(settings.merge_structurally_equal_types)),
 
             // TODO: pipe this through to the CLI options, requires valid serde impls
             async_: Default::default(),

@@ -110,6 +110,11 @@ pub struct Bindings {
     /// Disabling this can shave a few bytes off a binary but makes
     /// library-based usage of `generate!` prone to breakage.
     pub disable_custom_section_link_helpers: bool,
+    /// If true, structurally-equal types from different packages are merged
+    /// into a single Rust type (later occurrences become aliases of the
+    /// first). Exposes wit-bindgen's option of the same name, per-package;
+    /// off by default, matching upstream.
+    pub merge_structurally_equal_types: bool,
 }
 
 impl Default for Bindings {
@@ -132,6 +137,7 @@ impl Default for Bindings {
             pub_export_macro: Default::default(),
             generate_unused_types: Default::default(),
             disable_custom_section_link_helpers: Default::default(),
+            merge_structurally_equal_types: Default::default(),
         }
     }
 }
