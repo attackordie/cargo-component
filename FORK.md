@@ -71,6 +71,43 @@ that the frozen standalone `wit-bindgen-rt` crate at 0.44 does not provide.
 git HEAD moves, so `cargo-component --version` reports the current commit SHA
 without needing `cargo clean` between pulls.
 
+## Fork divergence: revision setting
+
+Branch `feat/revision-setting` adds a setting that overrides or disables the
+`revision` custom section cargo-component stamps into every component.
+Upstream always stamps the HEAD commit of the package's git repository
+(`src/git.rs`), so identical sources built at different commits produce
+different bytes.
+
+The setting has a manifest form and an environment form. The environment
+wins over the manifest, and both win over the default.
+
+| Form | Value | Result |
+|------|-------|--------|
+| `CARGO_COMPONENT_REVISION` | non-empty string | that string is the revision |
+| `CARGO_COMPONENT_REVISION` | empty string | no revision section |
+| `[package.metadata.component] revision` | `"<literal>"` | that literal is the revision |
+| `[package.metadata.component] revision` | `false` | no revision section |
+| neither set | | HEAD commit, as upstream |
+
+`revision = true` and `revision = ""` in the manifest are rejected. Every case
+yields at most one `revision` section. A literal or a disable never consults
+git.
+
+The environment is read when a module is componentized. cargo-component does
+not re-stamp an output that is already a component, so changing only the
+variable does not change a fresh build; the setting is meant to be set on the
+build that links the module.
+
+Why: Universal-Renderer ruling R-UR-018. UR gates check component bytes
+stamped with a source tree hash, and workshop build and workshop supply set
+`CARGO_COMPONENT_REVISION` to the same hash, so supply publishes the exact
+bytes the gates checked.
+
+Removal condition: drop this divergence once upstream cargo-component has an
+equivalent setting to override or omit the revision, and move consumers to
+the upstream form.
+
 ## How to verify this fork
 
 The fork's own upstream-compatible test suite:
