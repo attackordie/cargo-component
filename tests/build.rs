@@ -1107,3 +1107,159 @@ fn it_adds_metadata_from_cargo_toml() -> Result<()> {
 
     Ok(())
 }
+
+/// Commits the project's files to its git repository and returns the commit id.
+fn commit_project(project: &Project) -> Result<String> {
+    let repo = match git2::Repository::open(project.root()) {
+        Ok(repo) => repo,
+        Err(_) => git2::Repository::init(project.root())?,
+    };
+    let mut index = repo.index()?;
+    index.add_all(["*"], git2::IndexAddOption::DEFAULT, None)?;
+    index.write()?;
+    let tree = repo.find_tree(index.write_tree()?)?;
+    let signature = git2::Signature::now("Test", "test@example.com")?;
+    let commit = repo.commit(Some("HEAD"), &signature, &signature, "test", &tree, &[])?;
+    Ok(commit.to_string())
+}
+
+/// Returns the contents of every `revision` custom section in the given component.
+fn revision_sections(wasm: &[u8]) -> Result<Vec<String>> {
+    let mut sections = Vec::new();
+    for payload in wasmparser::Parser::new(0).parse_all(wasm) {
+        if let wasmparser::Payload::CustomSection(reader) = payload? {
+            if reader.name() == "revision" {
+                sections.push(String::from_utf8(reader.data().to_vec())?);
+            }
+        }
+    }
+    Ok(sections)
+}
+
+/// Builds the project in release mode and returns the `revision` sections of the output.
+fn build_revision_sections(project: &Project, env: Option<&str>) -> Result<Vec<String>> {
+    let mut cmd = project.cargo_component(["build", "--release"]);
+    match env {
+        Some(value) => cmd.env("CARGO_COMPONENT_REVISION", value),
+        None => cmd.env_remove("CARGO_COMPONENT_REVISION"),
+    };
+    cmd.assert()
+        .stderr(contains("Finished `release` profile [optimized] target(s)"))
+        .success();
+
+    let path = project.release_wasm("foo");
+    validate_component(&path)?;
+    let wasm = fs::read(&path)
+        .with_context(|| format!("failed to read wasm file `{path}`", path = path.display()))?;
+    revision_sections(&wasm)
+}
+
+#[test]
+fn it_stamps_the_head_commit_revision_by_default() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    let commit = commit_project(&project)?;
+
+    assert_eq!(build_revision_sections(&project, None)?, vec![commit]);
+
+    Ok(())
+}
+
+#[test]
+fn it_stamps_a_literal_revision_from_the_manifest() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    project.update_manifest(|mut doc| {
+        doc["package"]["metadata"]["component"]["revision"] = value("tree-1234");
+        Ok(doc)
+    })?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, None)?,
+        vec!["tree-1234".to_string()]
+    );
+
+    Ok(())
+}
+
+#[test]
+fn it_omits_the_revision_when_disabled_in_the_manifest() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    project.update_manifest(|mut doc| {
+        doc["package"]["metadata"]["component"]["revision"] = value(false);
+        Ok(doc)
+    })?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, None)?,
+        Vec::<String>::new()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn it_rejects_a_true_revision_in_the_manifest() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    project.update_manifest(|mut doc| {
+        doc["package"]["metadata"]["component"]["revision"] = value(true);
+        Ok(doc)
+    })?;
+
+    project
+        .cargo_component(["build", "--release"])
+        .env_remove("CARGO_COMPONENT_REVISION")
+        .assert()
+        .stderr(contains("`revision` must be a string or `false`"))
+        .failure();
+
+    Ok(())
+}
+
+#[test]
+fn it_prefers_the_revision_env_over_the_manifest() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    project.update_manifest(|mut doc| {
+        doc["package"]["metadata"]["component"]["revision"] = value("from-manifest");
+        Ok(doc)
+    })?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, Some("from-env"))?,
+        vec!["from-env".to_string()]
+    );
+
+    Ok(())
+}
+
+#[test]
+fn it_omits_the_revision_when_the_env_is_empty() -> Result<()> {
+    // An empty value omits the revision, even over a manifest literal.
+    let project = Project::new("foo", true)?;
+    project.update_manifest(|mut doc| {
+        doc["package"]["metadata"]["component"]["revision"] = value("from-manifest");
+        Ok(doc)
+    })?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, Some(""))?,
+        Vec::<String>::new()
+    );
+
+    Ok(())
+}
+
+#[test]
+fn it_stamps_the_env_revision_over_the_head_commit() -> Result<()> {
+    let project = Project::new("foo", true)?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, Some("from-env"))?,
+        vec!["from-env".to_string()]
+    );
+
+    Ok(())
+}

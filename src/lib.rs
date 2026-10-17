@@ -38,7 +38,7 @@ use crate::target::install_wasm32_wasip1;
 use config::{CargoArguments, CargoPackageSpec, Config};
 use git::GitMetadata;
 use lock::{acquire_lock_file_ro, acquire_lock_file_rw};
-use metadata::ComponentMetadata;
+use metadata::{ComponentMetadata, RevisionSetting};
 use registry::{PackageDependencyResolution, PackageResolutionMap};
 
 mod bindings;
@@ -973,9 +973,9 @@ fn componentize(
         .validate(true);
 
     let package = &cargo_metadata[&artifact.package_id];
-    let git = GitMetadata::from_package(package)?;
-    let component = add_component_metadata(package, git.as_ref(), &encoder.encode()?)
-        .with_context(|| {
+    let revision = resolve_revision(package, metadata)?;
+    let component =
+        add_component_metadata(package, revision, &encoder.encode()?).with_context(|| {
             format!(
                 "failed to add metadata to output component `{path}`",
                 path = path.display()
@@ -1024,10 +1024,29 @@ pub struct PublishOptions<'a> {
     pub dry_run: bool,
 }
 
+/// Resolves the revision to stamp in the component's metadata.
+///
+/// The `CARGO_COMPONENT_REVISION` environment variable takes precedence, then
+/// the `revision` setting in `package.metadata.component`, and otherwise the
+/// HEAD commit of the package's git repository, if any. A `None` result means
+/// no revision is stamped.
+fn resolve_revision(package: &Package, metadata: &ComponentMetadata) -> Result<Option<String>> {
+    let setting = match RevisionSetting::from_env()? {
+        Some(setting) => Some(setting),
+        None => metadata.section.revision.clone(),
+    };
+
+    match setting {
+        Some(RevisionSetting::Literal(revision)) => Ok(Some(revision)),
+        Some(RevisionSetting::Omit) => Ok(None),
+        None => Ok(GitMetadata::from_package(package)?.map(|git| git.commit().to_string())),
+    }
+}
+
 /// Read metadata from `Cargo.toml` and add it to the component
 fn add_component_metadata(
     package: &Package,
-    git: Option<&GitMetadata>,
+    revision: Option<String>,
     wasm: &[u8],
 ) -> Result<Vec<u8>> {
     let metadata = wasm_metadata::AddMetadata {
@@ -1063,7 +1082,7 @@ fn add_component_metadata(
             .as_ref()
             .map(|s| wasm_metadata::Homepage::new(s.to_string().as_str()))
             .transpose()?,
-        revision: git.map(|git| wasm_metadata::Revision::new(git.commit().to_string())),
+        revision: revision.map(wasm_metadata::Revision::new),
         version: Some(wasm_metadata::Version::new(package.version.to_string())),
     };
     metadata.to_wasm(wasm)

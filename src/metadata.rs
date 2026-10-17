@@ -332,6 +332,87 @@ impl<'de> Deserialize<'de> for Target {
     }
 }
 
+/// The environment variable that overrides the `revision` setting.
+///
+/// A non-empty value is stamped as the component's revision; an empty value
+/// omits the revision. When set, it takes precedence over the manifest.
+pub const REVISION_ENV_VAR: &str = "CARGO_COMPONENT_REVISION";
+
+/// The `revision` setting in the `package.metadata.component` section.
+///
+/// When the setting is absent, the revision is the HEAD commit of the git
+/// repository containing the package, if any.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RevisionSetting {
+    /// Stamp the given literal as the revision (`revision = "<literal>"`).
+    Literal(String),
+    /// Omit the revision (`revision = false`).
+    Omit,
+}
+
+impl RevisionSetting {
+    /// Reads the revision setting from the `CARGO_COMPONENT_REVISION`
+    /// environment variable, if it is set.
+    pub fn from_env() -> Result<Option<Self>> {
+        match std::env::var_os(REVISION_ENV_VAR) {
+            None => Ok(None),
+            Some(value) => {
+                let value = value.into_string().map_err(|_| {
+                    anyhow::anyhow!("environment variable `{REVISION_ENV_VAR}` is not valid UTF-8")
+                })?;
+                Ok(Some(if value.is_empty() {
+                    Self::Omit
+                } else {
+                    Self::Literal(value)
+                }))
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for RevisionSetting {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct Visitor;
+
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = RevisionSetting;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(formatter, "a non-empty string or `false`")
+            }
+
+            fn visit_str<E>(self, s: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if s.is_empty() {
+                    return Err(de::Error::custom(
+                        "`revision` cannot be an empty string; use `false` to omit the revision",
+                    ));
+                }
+                Ok(RevisionSetting::Literal(s.to_string()))
+            }
+
+            fn visit_bool<E>(self, b: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if b {
+                    return Err(de::Error::custom(
+                        "`revision` must be a string or `false`; remove it to stamp the HEAD commit",
+                    ));
+                }
+                Ok(RevisionSetting::Omit)
+            }
+        }
+
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
 /// Represents the `package.metadata.component` section in `Cargo.toml`.
 #[derive(Default, Debug, Clone, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -352,6 +433,11 @@ pub struct ComponentSection {
     ///
     /// This should only be `true` when `adapter` is None.
     pub proxy: bool,
+    /// The revision to stamp in the component's metadata.
+    ///
+    /// `None` stamps the HEAD commit. The `CARGO_COMPONENT_REVISION`
+    /// environment variable takes precedence over this setting.
+    pub revision: Option<RevisionSetting>,
 }
 
 /// Represents cargo metadata for a WebAssembly component.
