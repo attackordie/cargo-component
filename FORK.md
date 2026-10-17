@@ -94,10 +94,11 @@ wins over the manifest, and both win over the default.
 yields at most one `revision` section. A literal or a disable never consults
 git.
 
-The environment is read when a module is componentized. cargo-component does
-not re-stamp an output that is already a component, so changing only the
-variable does not change a fresh build; the setting is meant to be set on the
-build that links the module.
+The setting is read each time a module is componentized, and a rebuild with no
+source change still re-componentizes, so changing only the variable changes
+the stamp on the next build (`it_restamps_the_revision_on_a_fresh_rebuild`).
+The `processed-by` producers field still carries this binary's own version and
+commit, so byte-identical outputs also need the same cargo-component binary.
 
 Why: Universal-Renderer ruling R-UR-018. UR gates check component bytes
 stamped with a source tree hash, and workshop build and workshop supply set

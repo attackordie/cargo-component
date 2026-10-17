@@ -1263,3 +1263,26 @@ fn it_stamps_the_env_revision_over_the_head_commit() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn it_restamps_the_revision_on_a_fresh_rebuild() -> Result<()> {
+    // A rebuild with no source change still re-stamps the revision, so a
+    // changed setting never leaves a stale revision in the output.
+    let project = Project::new("foo", true)?;
+    commit_project(&project)?;
+
+    assert_eq!(
+        build_revision_sections(&project, Some("first"))?,
+        vec!["first".to_string()]
+    );
+    assert_eq!(
+        build_revision_sections(&project, Some("second"))?,
+        vec!["second".to_string()]
+    );
+    assert_eq!(
+        build_revision_sections(&project, Some(""))?,
+        Vec::<String>::new()
+    );
+
+    Ok(())
+}
